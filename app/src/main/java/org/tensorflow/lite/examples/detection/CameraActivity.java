@@ -49,9 +49,11 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
-import java.nio.ByteBuffer;
+
 import org.tensorflow.lite.examples.detection.env.ImageUtils;
 import org.tensorflow.lite.examples.detection.env.Logger;
+
+import java.nio.ByteBuffer;
 
 public abstract class CameraActivity extends AppCompatActivity
     implements OnImageAvailableListener,

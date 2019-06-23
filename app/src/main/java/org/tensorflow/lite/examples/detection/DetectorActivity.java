@@ -23,13 +23,26 @@ import android.graphics.Color;
 import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.Paint.Style;
+import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.Typeface;
 import android.media.ImageReader.OnImageAvailableListener;
 import android.os.SystemClock;
+import android.support.annotation.NonNull;
 import android.util.Size;
 import android.util.TypedValue;
 import android.widget.Toast;
+
+import com.google.android.gms.tasks.OnFailureListener;
+import com.google.android.gms.tasks.OnSuccessListener;
+import com.google.android.gms.tasks.Task;
+import com.google.firebase.ml.vision.FirebaseVision;
+import com.google.firebase.ml.vision.common.FirebaseVisionImage;
+import com.google.firebase.ml.vision.common.FirebaseVisionPoint;
+import com.google.firebase.ml.vision.face.FirebaseVisionFace;
+import com.google.firebase.ml.vision.face.FirebaseVisionFaceDetector;
+import com.google.firebase.ml.vision.face.FirebaseVisionFaceDetectorOptions;
+import com.google.firebase.ml.vision.face.FirebaseVisionFaceLandmark;
 
 import org.tensorflow.lite.examples.detection.customview.OverlayView;
 import org.tensorflow.lite.examples.detection.customview.OverlayView.DrawCallback;
@@ -168,22 +181,97 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
         readyForNextImage();
 
         final Canvas canvas = new Canvas(croppedBitmap);
+        // ここで情報を移動している
         canvas.drawBitmap(rgbFrameBitmap, frameToCropTransform, null);
         // For examining the actual TF input.
         if (SAVE_PREVIEW_BITMAP) {
             ImageUtils.saveBitmap(croppedBitmap);
         }
 
+        /**
+         * 顔検出の下準備
+         */
+        // Real-time contour detection of multiple faces
+        FirebaseVisionFaceDetectorOptions realTimeOpts =
+                new FirebaseVisionFaceDetectorOptions.Builder()
+                        .setContourMode(FirebaseVisionFaceDetectorOptions.ALL_CONTOURS)
+                        .setLandmarkMode(FirebaseVisionFaceDetectorOptions.ALL_LANDMARKS)
+                        .build();
+
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                LOGGER.i("Running detection on image " + currTimestamp);
+                final long startTime = SystemClock.uptimeMillis();
+
+                /**
+                 * 顔検出のための処理
+                 */
+                FirebaseVisionImage image = FirebaseVisionImage.fromBitmap(croppedBitmap);
+
+                Bitmap bitmap = croppedBitmap.copy(Config.ARGB_8888, true);
+
+                FirebaseVisionFaceDetector detectorFace = FirebaseVision.getInstance()
+                        .getVisionFaceDetector(realTimeOpts);
+
+                Task<List<FirebaseVisionFace>> resultFace =
+                        detectorFace.detectInImage(image)
+                                .addOnSuccessListener(
+                                        new OnSuccessListener<List<FirebaseVisionFace>>() {
+                                            @Override
+                                            public void onSuccess(List<FirebaseVisionFace> faces) {
+                                                // Task completed successfully
+                                                // ...
+
+                                                // 最初の一人のみ顔を検出する．
+
+                                                // 顔の境界
+                                                Rect bounds = faces.get(0).getBoundingBox();
+                                                // If landmark detection was enabled (mouth, ears, eyes, cheeks, and
+                                                // nose available):
+                                                // ランドマーク 右目
+                                                FirebaseVisionFaceLandmark rightEye = faces.get(0).getLandmark(FirebaseVisionFaceLandmark.RIGHT_EYE);
+                                                if (rightEye != null) {
+                                                    FirebaseVisionPoint rigthEyePos = rightEye.getPosition();
+                                                }
+                                                // ランドマーク 左目
+                                                FirebaseVisionFaceLandmark leftEye = faces.get(0).getLandmark(FirebaseVisionFaceLandmark.LEFT_EYE);
+                                                if (leftEye != null) {
+                                                    FirebaseVisionPoint leftEyePos = leftEye.getPosition();
+                                                }
+
+
+                                                // ここで色々用いて顔画像を切り出す
+                                                // recognize();
+                                            }
+                                        })
+                                .addOnFailureListener(
+                                        new OnFailureListener() {
+                                            @Override
+                                            public void onFailure(@NonNull Exception e) {
+                                                // Task failed with an exception
+                                                // ...
+                                            }
+                                        });
+
+            }
+        }).start();
+    }
+
+    private void recognize(Bitmap face, Bitmap right, Bitmap left, Bitmap grid) {
+
         runInBackground(
                 new Runnable() {
                     @Override
                     public void run() {
-                        LOGGER.i("Running detection on image " + currTimestamp);
+                        //LOGGER.i("Running detection on image " + currTimestamp);
                         final long startTime = SystemClock.uptimeMillis();
+
                         final List<Classifier.Recognition> results = detector.recognizeImage(croppedBitmap);
                         lastProcessingTimeMs = SystemClock.uptimeMillis() - startTime;
 
                         cropCopyBitmap = Bitmap.createBitmap(croppedBitmap);
+                        // 紐付け？
                         final Canvas canvas = new Canvas(cropCopyBitmap);
                         final Paint paint = new Paint();
                         paint.setColor(Color.RED);
@@ -212,7 +300,8 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
                             }
                         }
 
-                        tracker.trackResults(mappedRecognitions, currTimestamp);
+                        // 一時的にtimestampに100を代入
+                        tracker.trackResults(mappedRecognitions, 100);
                         trackingOverlay.postInvalidate();
 
                         computingDetection = false;
