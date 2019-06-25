@@ -149,6 +149,10 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
         tracker.setFrameConfiguration(previewWidth, previewHeight, sensorOrientation);
     }
 
+    /**
+     * 画像を処理するメソッド
+     * 通常であればカメラからの映像が来る度にこのメソッドが呼ばれるはずである
+     */
     @Override
     protected void processImage() {
         ++timestamp;
