@@ -28,10 +28,12 @@ import android.graphics.RectF;
 import android.graphics.Typeface;
 import android.media.ImageReader.OnImageAvailableListener;
 import android.os.SystemClock;
-import android.support.annotation.NonNull;
+import android.util.Log;
 import android.util.Size;
 import android.util.TypedValue;
 import android.widget.Toast;
+
+import androidx.annotation.NonNull;
 
 import com.google.android.gms.tasks.OnFailureListener;
 import com.google.android.gms.tasks.OnSuccessListener;
@@ -198,15 +200,16 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
                         .setLandmarkMode(FirebaseVisionFaceDetectorOptions.ALL_LANDMARKS)
                         .build();
 
+        Log.v("MLKit", "bbbbbbbbbb");
+
+
         new Thread(new Runnable() {
             @Override
             public void run() {
                 LOGGER.i("Running detection on image " + currTimestamp);
                 final long startTime = SystemClock.uptimeMillis();
 
-                /**
-                 * 顔検出のための処理
-                 */
+                //顔検出のための処理
                 FirebaseVisionImage image = FirebaseVisionImage.fromBitmap(croppedBitmap);
 
                 Bitmap bitmap = croppedBitmap.copy(Config.ARGB_8888, true);
@@ -225,19 +228,25 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
 
                                                 // 最初の一人のみ顔を検出する．
 
-                                                // 顔の境界
-                                                Rect bounds = faces.get(0).getBoundingBox();
-                                                // If landmark detection was enabled (mouth, ears, eyes, cheeks, and
-                                                // nose available):
-                                                // ランドマーク 右目
-                                                FirebaseVisionFaceLandmark rightEye = faces.get(0).getLandmark(FirebaseVisionFaceLandmark.RIGHT_EYE);
-                                                if (rightEye != null) {
-                                                    FirebaseVisionPoint rigthEyePos = rightEye.getPosition();
-                                                }
-                                                // ランドマーク 左目
-                                                FirebaseVisionFaceLandmark leftEye = faces.get(0).getLandmark(FirebaseVisionFaceLandmark.LEFT_EYE);
-                                                if (leftEye != null) {
-                                                    FirebaseVisionPoint leftEyePos = leftEye.getPosition();
+                                                Log.v("MLKit", "aaaaaaa");
+
+                                                if (faces.size() != 0) {
+                                                    // 顔の境界
+                                                    Rect bounds = faces.get(0).getBoundingBox();
+                                                    // If landmark detection was enabled (mouth, ears, eyes, cheeks, and
+                                                    // nose available):
+                                                    // ランドマーク 右目
+                                                    FirebaseVisionFaceLandmark rightEye = faces.get(0).getLandmark(FirebaseVisionFaceLandmark.RIGHT_EYE);
+                                                    if (rightEye != null) {
+                                                        FirebaseVisionPoint rigthEyePos = rightEye.getPosition();
+                                                        Log.v("MLKit", rigthEyePos.toString());
+                                                    }
+                                                    // ランドマーク 左目
+                                                    FirebaseVisionFaceLandmark leftEye = faces.get(0).getLandmark(FirebaseVisionFaceLandmark.LEFT_EYE);
+                                                    if (leftEye != null) {
+                                                        FirebaseVisionPoint leftEyePos = leftEye.getPosition();
+                                                        Log.v("MLKit", leftEyePos.toString());
+                                                    }
                                                 }
 
 
