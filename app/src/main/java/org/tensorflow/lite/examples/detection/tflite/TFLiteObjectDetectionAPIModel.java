@@ -52,6 +52,10 @@ public class TFLiteObjectDetectionAPIModel implements Classifier {
 
     // Float model
     // 画像の平均と標準偏差
+    private static final float IMAGE_MAX = 255.0f;
+
+    // Float model
+    // 画像の平均と標準偏差
     private static final float IMAGE_MEAN = 128.0f;
     private static final float IMAGE_STD = 128.0f;
 
@@ -84,6 +88,18 @@ public class TFLiteObjectDetectionAPIModel implements Classifier {
 
     //バイトバッファー
     private ByteBuffer imgData;
+
+    // 画像のベクトル化
+    private int[] intValues_face;
+    private int[] intValues_right;
+    private int[] intValues_left;
+    private int[] intValues_grid;
+
+    //バイトバッファー
+    private ByteBuffer imgData_face;
+    private ByteBuffer imgData_right;
+    private ByteBuffer imgData_left;
+    private ByteBuffer imgData_grid;
 
     // 推論を行う関数
     private Interpreter tfLite;
@@ -160,6 +176,35 @@ public class TFLiteObjectDetectionAPIModel implements Classifier {
         d.imgData.order(ByteOrder.nativeOrder());
         // 画像の数
         d.intValues = new int[d.inputSize * d.inputSize];
+
+        // imgDataに新しいダイレクトbyteバッファーを割り当てる
+        d.imgData_face = ByteBuffer.allocateDirect(1 * d.inputSize * d.inputSize * 3 * numBytesPerChannel);
+        // 効率を良くするためにbyte順序を変更
+        d.imgData_face.order(ByteOrder.nativeOrder());
+        // 画像の数
+        d.intValues_face = new int[d.inputSize * d.inputSize];
+
+        // imgDataに新しいダイレクトbyteバッファーを割り当てる
+        d.imgData_right = ByteBuffer.allocateDirect(1 * d.inputSize * d.inputSize * 3 * numBytesPerChannel);
+        // 効率を良くするためにbyte順序を変更
+        d.imgData_right.order(ByteOrder.nativeOrder());
+        // 画像の数
+        d.intValues_right = new int[d.inputSize * d.inputSize];
+
+        // imgDataに新しいダイレクトbyteバッファーを割り当てる
+        d.imgData_left = ByteBuffer.allocateDirect(1 * d.inputSize * d.inputSize * 3 * numBytesPerChannel);
+        // 効率を良くするためにbyte順序を変更
+        d.imgData_left.order(ByteOrder.nativeOrder());
+        // 画像の数
+        d.intValues_left = new int[d.inputSize * d.inputSize];
+
+        // imgDataに新しいダイレクトbyteバッファーを割り当てる
+        d.imgData_grid = ByteBuffer.allocateDirect(1 * 25 * 25 * 1 * numBytesPerChannel);
+        // 効率を良くするためにbyte順序を変更
+        d.imgData_grid.order(ByteOrder.nativeOrder());
+        // 画像の数
+        d.intValues_grid = new int[25 * 25];
+
         // スレッドの数を指定
         d.tfLite.setNumThreads(NUM_THREADS);
         // 少し不明
@@ -258,6 +303,120 @@ public class TFLiteObjectDetectionAPIModel implements Classifier {
         }
         Trace.endSection(); // "recognizeImage"
         return recognitions;
+    }
+
+    @Override
+    public float[][] recognizeImageEye(Bitmap face, Bitmap right_eye, Bitmap left_eye, Bitmap face_grid) {
+
+        //Bitmap2Mat(face);
+
+        // 推定値
+        float[][] recognizedValues = new float[1][2];
+
+        // 画像を配列に変換する
+        face.getPixels(intValues_face, 0, face.getWidth(), 0, 0, face.getWidth(), face.getHeight());
+        right_eye.getPixels(intValues_right, 0, right_eye.getWidth(), 0, 0, right_eye.getWidth(), right_eye.getHeight());
+        left_eye.getPixels(intValues_left, 0, left_eye.getWidth(), 0, 0, left_eye.getWidth(), left_eye.getHeight());
+        face_grid.getPixels(intValues_grid, 0, face_grid.getWidth(), 0, 0, face_grid.getWidth(), face_grid.getHeight());
+
+        // マーク位置を0に戻す
+        imgData_face.rewind();
+        imgData_right.rewind();
+        imgData_left.rewind();
+        imgData_grid.rewind();
+
+
+        int count = 0;
+        float face_mean = 0, right_mean = 0, left_mean = 0;
+        // 画像の平均．画像を全て255で割ったあと，平均を求める
+        // すごい重い作業なのであとで改善する必要がある
+        for (int i = 0; i < inputSize; ++i) {
+            for (int j = 0; j < inputSize; ++j) {
+                // 一つずつピクセルを取り出す
+                int pixelValue_face = intValues_face[i * inputSize + j];
+                int pixelValue_right = intValues_right[i * inputSize + j];
+                int pixelValue_left = intValues_left[i * inputSize + j];
+
+                // 画像をfloat型に変換
+                face_mean += (((pixelValue_face >> 16) & 0xFF) / IMAGE_MAX + ((pixelValue_face >> 8) & 0xFF) / IMAGE_MAX + (pixelValue_face & 0xFF) / IMAGE_MAX);
+                right_mean += (((pixelValue_right >> 16) & 0xFF) / IMAGE_MAX + ((pixelValue_right >> 8) & 0xFF) / IMAGE_MAX + (pixelValue_right & 0xFF) / IMAGE_MAX);
+                left_mean += (((pixelValue_left >> 16) & 0xFF) / IMAGE_MAX + ((pixelValue_left >> 8) & 0xFF) / IMAGE_MAX + (pixelValue_left & 0xFF) / IMAGE_MAX);
+
+                count++;
+            }
+        }
+
+        face_mean = face_mean / (count * 3);
+        right_mean = right_mean / (count * 3);
+        left_mean = left_mean / (count * 3);
+
+        for (int i = 0; i < inputSize; ++i) {
+            for (int j = 0; j < inputSize; ++j) {
+                // 一つずつピクセルを取り出す
+                int pixelValue = intValues_face[i * inputSize + j];
+
+                // 画像をfloat型に変換
+                imgData_face.putFloat(((pixelValue & 0xFF) / IMAGE_MAX) - face_mean);
+                imgData_face.putFloat((((pixelValue >> 8) & 0xFF) / IMAGE_MAX) - face_mean);
+                imgData_face.putFloat((((pixelValue >> 16) & 0xFF) / IMAGE_MAX) - face_mean);
+
+            }
+        }
+
+        for (int i = 0; i < inputSize; ++i) {
+            for (int j = 0; j < inputSize; ++j) {
+                // 一つずつピクセルを取り出す
+                int pixelValue = intValues_right[i * inputSize + j];
+
+                // 画像をfloat型に変換
+                imgData_right.putFloat(((pixelValue & 0xFF) / IMAGE_MAX) - right_mean);
+                imgData_right.putFloat((((pixelValue >> 8) & 0xFF) / IMAGE_MAX) - right_mean);
+                imgData_right.putFloat((((pixelValue >> 16) & 0xFF) / IMAGE_MAX) - right_mean);
+
+            }
+        }
+
+        for (int i = 0; i < inputSize; ++i) {
+            for (int j = 0; j < inputSize; ++j) {
+                // 一つずつピクセルを取り出す
+                int pixelValue = intValues_left[i * inputSize + j];
+
+
+                float test = (((pixelValue >> 16) & 0xFF) / IMAGE_MAX) - left_mean;
+                // 画像をfloat型に変換
+                imgData_left.putFloat(((pixelValue & 0xFF) / IMAGE_MAX) - left_mean);
+                imgData_left.putFloat((((pixelValue >> 8) & 0xFF) / IMAGE_MAX) - left_mean);
+                imgData_left.putFloat((((pixelValue >> 16) & 0xFF) / IMAGE_MAX) - left_mean);
+
+            }
+        }
+
+        for (int i = 0; i < 25; ++i) {
+            for (int j = 0; j < 25; ++j) {
+                // 一つずつピクセルを取り出す
+                int pixelValue = intValues_grid[i * 25 + j];
+                if (pixelValue == -16777216) {
+                    imgData_grid.putFloat(0.0f);
+                }
+                if (pixelValue == -1) {
+                    imgData_grid.putFloat(1.0f);
+                }
+
+            }
+        }
+
+        // inputArrayにimgDataのBufferを代入（object型）
+        Object[] inputArray = {imgData_right, imgData_left, imgData_face, imgData_grid};
+
+        // Map型　キーint型 数値Object型
+        Map<Integer, Object> outputMap = new HashMap<>();
+
+        // 各キーにそれぞれfloat型を代入
+        outputMap.put(0, recognizedValues);
+
+        tfLite.runForMultipleInputsOutputs(inputArray, outputMap);
+
+        return recognizedValues;
     }
 
     @Override
