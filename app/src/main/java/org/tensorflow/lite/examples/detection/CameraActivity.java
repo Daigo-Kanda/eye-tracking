@@ -39,6 +39,8 @@ import com.google.android.material.bottomsheet.BottomSheetBehavior;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.SwitchCompat;
 import androidx.appcompat.widget.Toolbar;
+
+import android.util.Log;
 import android.util.Size;
 import android.view.Surface;
 import android.view.View;
@@ -192,6 +194,9 @@ public abstract class CameraActivity extends AppCompatActivity
       return;
     }
 
+
+    Log.v("camera", "camera1");
+
     try {
       // Initialize the storage bitmaps once when the resolution is known.
       if (rgbBytes == null) {
@@ -232,6 +237,8 @@ public abstract class CameraActivity extends AppCompatActivity
   /** Callback for Camera2 API */
   @Override
   public void onImageAvailable(final ImageReader reader) {
+
+    Log.v("camera", "camera2");
     // We need wait until we have some size from onPreviewSizeChosen
     if (previewWidth == 0 || previewHeight == 0) {
       return;
@@ -397,7 +404,7 @@ public abstract class CameraActivity extends AppCompatActivity
 
         // We don't use a front facing camera in this sample.
         final Integer facing = characteristics.get(CameraCharacteristics.LENS_FACING);
-        if (facing != null && facing == CameraCharacteristics.LENS_FACING_FRONT) {
+        if (facing != null && facing == CameraCharacteristics.LENS_FACING_BACK) {
           continue;
         }
 
@@ -411,10 +418,11 @@ public abstract class CameraActivity extends AppCompatActivity
         // Fallback to camera1 API for internal cameras that don't have full support.
         // This should help with legacy situations where using the camera2 API causes
         // distorted or otherwise broken previews.
-        useCamera2API =
+/*        useCamera2API =
             (facing == CameraCharacteristics.LENS_FACING_EXTERNAL)
                 || isHardwareLevelSupported(
-                    characteristics, CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_FULL);
+                    characteristics, CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_FULL);*/
+        useCamera2API = true;
         LOGGER.i("Camera API lv2?: %s", useCamera2API);
         return cameraId;
       }
