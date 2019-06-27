@@ -18,6 +18,7 @@ package org.tensorflow.lite.examples.detection.customview;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.util.AttributeSet;
+import android.util.Log;
 import android.view.View;
 import java.util.LinkedList;
 import java.util.List;
@@ -34,8 +35,10 @@ public class OverlayView extends View {
     callbacks.add(callback);
   }
 
+  // 更新要請がかかるとcanvasをdrawCallbackに渡す
   @Override
   public synchronized void draw(final Canvas canvas) {
+    Log.v("canvas", canvas.getWidth() +":"+ canvas.getHeight());
     for (final DrawCallback callback : callbacks) {
       callback.drawCallback(canvas);
     }

@@ -22,11 +22,14 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Matrix;
 import android.graphics.Paint;
+import android.graphics.Point;
 import android.graphics.Rect;
+import android.graphics.RectF;
 import android.graphics.Typeface;
 import android.media.ImageReader.OnImageAvailableListener;
 import android.os.Environment;
 import android.os.SystemClock;
+import android.util.DisplayMetrics;
 import android.util.Log;
 import android.util.Size;
 import android.util.TypedValue;
@@ -59,6 +62,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.LinkedList;
 import java.util.List;
 
 /**
@@ -70,8 +74,8 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
 
     // Configuration values for the prepackaged SSD model.
     private static final int TF_OD_API_INPUT_SIZE = 64;
-    private static final int cropSizex = 2560;
-    private static final int cropSizey = 1600;
+    private static final int cropSizex = 960;
+    private static final int cropSizey = 1280;
 
     private static final boolean TF_OD_API_IS_QUANTIZED = false;
     private static final String TF_OD_API_MODEL_FILE = "converted_model.tflite";
@@ -80,7 +84,7 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
     // Minimum detection confidence to track a detection.
     private static final float MINIMUM_CONFIDENCE_TF_OD_API = 0.5f;
     private static final boolean MAINTAIN_ASPECT = false;
-    private static final Size DESIRED_PREVIEW_SIZE = new Size(2560, 1600);
+    private static final Size DESIRED_PREVIEW_SIZE = new Size(960, 1280);
     private static final boolean SAVE_PREVIEW_BITMAP = false;
     private static final float TEXT_SIZE_DIP = 10;
     OverlayView trackingOverlay;
@@ -111,6 +115,13 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
 
     private int scaledSize = 64;
 
+    // 画像上での1pixelあたりの長さ[cm]を格納
+    private float[] dis = new float[2];
+
+    // 確認用
+    private float realWidthPerPixel;
+    private float realHeightPercPixel;
+
     /**
      * 顔検出の下準備
      */
@@ -120,8 +131,16 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
                     .setContourMode(FirebaseVisionFaceDetectorOptions.ALL_CONTOURS)
                     .build();
 
+    // Preview画像のサイズが決定されたときに呼ばれるメソッド
     @Override
     public void onPreviewSizeChosen(final Size size, final int rotation) {
+
+
+        int width = findViewById(R.id.container).getWidth();
+        int height = findViewById(R.id.container).getHeight();
+        dis = calDistanceOfPerPixel(width,height,cropSizex,cropSizey);
+
+        Log.v("Container", dis[0] + ":" + dis[1]);
         final float textSizePx =
                 TypedValue.applyDimension(
                         TypedValue.COMPLEX_UNIT_DIP, TEXT_SIZE_DIP, getResources().getDisplayMetrics());
@@ -151,27 +170,39 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
             finish();
         }
 
+        // previewのサイズを代入 1280*960
         previewWidth = size.getWidth();
         previewHeight = size.getHeight();
+
+        Log.v("previewsize", previewWidth +":"+ previewHeight);
 
         sensorOrientation = rotation - getScreenOrientation();
         LOGGER.i("Camera orientation relative to screen canvas: %d", sensorOrientation);
 
         LOGGER.i("Initializing at size %dx%d", previewWidth, previewHeight);
+
+        // プレビュー（画面上に表示された画像）の情報を持つBitmap
         rgbFrameBitmap = Bitmap.createBitmap(previewWidth, previewHeight, Config.ARGB_8888);
+
+        // 深層学習用にサイズが変更された画像を持つBitmap
         croppedBitmap = Bitmap.createBitmap(cropSizex, cropSizey, Config.ARGB_8888);
 
+        // PreviewFrameからCropFrameへの変換用のMatrix
         frameToCropTransform =
                 ImageUtils.getTransformationMatrix(
                         previewWidth, previewHeight,
                         cropSizex, cropSizey,
                         sensorOrientation, MAINTAIN_ASPECT);
 
+        // CropFrameからPreviewFrameへの変換用Matrix
         cropToFrameTransform = new Matrix();
         frameToCropTransform.invert(cropToFrameTransform);
 
+        // 画面と関連付け
         trackingOverlay = (OverlayView) findViewById(R.id.tracking_overlay);
-        trackingOverlay.addCallback(
+
+        // OverlayViewが更新されるときに呼ばれる
+  /*      trackingOverlay.addCallback(
                 new DrawCallback() {
                     @Override
                     public void drawCallback(final Canvas canvas) {
@@ -180,14 +211,24 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
                             tracker.drawDebug(canvas);
                         }
                     }
+                });*/
+
+        trackingOverlay.addCallback(
+                new DrawCallback() {
+                    @Override
+                    public void drawCallback(final Canvas canvas) {
+                        tracker.draw_circle(canvas);
+                    }
                 });
 
+        // 画面描画の設定 実際
         tracker.setFrameConfiguration(previewWidth, previewHeight, sensorOrientation);
     }
 
     @Override
     protected void processImage() {
 
+        saveImage(rgbFrameBitmap, "real");
         ++timestamp;
         final long currTimestamp = timestamp;
         trackingOverlay.postInvalidate();
@@ -200,14 +241,23 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
         computingDetection = true;
         LOGGER.i("Preparing image " + currTimestamp + " for detection in bg thread.");
 
+        // Previewの画像を取得．しかし，実際にPreviewを表示しているときにはOrientationをいじっている．
+        // 画像を回転させている
         rgbFrameBitmap.setPixels(getRgbBytes(), 0, previewWidth, 0, 0, previewWidth, previewHeight);
 
         readyForNextImage();
 
+        // カメラから取得した映像とcanvasを関連付け
+        // Canvasを用いてcroppedBitmapを自由に変更できる
         final Canvas canvas = new Canvas(croppedBitmap);
-        // ここで情報を移動している
+
+        // croppedBitmapの描かれたキャンバスにframeToCropTransformを用いてrgbFrameBitmapを描画
         canvas.drawBitmap(rgbFrameBitmap, frameToCropTransform, null);
-        // For examining the actual TF input.
+
+        Log.v("croppedBitmap", croppedBitmap.getWidth() + ":" + croppedBitmap.getHeight());
+        saveImage(croppedBitmap, "cropped");
+
+        // croppedBitmapを保存
         if (SAVE_PREVIEW_BITMAP) {
             ImageUtils.saveBitmap(croppedBitmap);
         }
@@ -265,10 +315,10 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
                                                                 // 右目を切り取った画像
                                                                 Rect rightRec = calEyeRect(rightEyeContour);
                                                                 Log.v("EyeRect", rightRec.toString());
-                                                                Bitmap test  =cropBitmap(bitmap, rightRec);
+                                                                Bitmap test = cropBitmap(bitmap, rightRec);
                                                                 Bitmap right = Bitmap.createScaledBitmap(cropBitmap(bitmap, rightRec), scaledSize, scaledSize, false);
                                                                 Log.v("right_eye", "crop :" + test.getWidth() + ":" + test.getHeight()
-                                                                        + "\nscaled :" + right.getWidth() +":"+ right.getHeight());
+                                                                        + "\nscaled :" + right.getWidth() + ":" + right.getHeight());
 
                                                                 // 左目を切り取った画像
                                                                 Rect leftRec = calEyeRect(leftEyeContour);
@@ -284,6 +334,26 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
                                                                 cv.drawBitmap(grid, 0, 0, null);
                                                                 grid = Bitmap.createScaledBitmap(grid, 25, 25, false);
 
+                                                                int[] intValues_grid;
+                                                                intValues_grid = new int[25 * 25];
+                                                                grid.getPixels(intValues_grid, 0, grid.getWidth(), 0, 0, grid.getWidth(), grid.getHeight());
+
+                                                                for (int i = 0; i < 25; ++i) {
+                                                                    for (int j = 0; j < 25; ++j) {
+                                                                        // 一つずつピクセルを取り出す
+                                                                        int pixelValue = intValues_grid[i * 25 + j];
+                                                                        if (pixelValue == -16777216) {
+                                                                            Log.v("grid", "黒");
+                                                                        } else if (pixelValue == -1) {
+                                                                            Log.v("grid", "白");
+                                                                        } else {
+                                                                            Log.v("grid", "白黒以外が存在しています");
+                                                                        }
+
+                                                                    }
+                                                                }
+
+
                                                                 saveImage(grid, "grid");
 
                                                                 saveImage(face, "face");
@@ -295,6 +365,7 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
                                                                 //computingDetection = false;
                                                                 recognize(face, right, left, grid);
                                                             }
+
                                                             // 顔の領域が画面の外に及ぶ場合
                                                             else {
                                                                 computingDetection = false;
@@ -319,6 +390,90 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
 
                     }
                 });
+    }
+
+    // 画像上での1pixelの実際の距離を返す(cm)．
+    /**
+     *
+     * @param previewWidth ディスプレイ上に描画している画像の横幅（物理ピクセル）
+     * @param previewHeight ディスプレイ上に描画している画像の高さ（物理ピクセル）
+     * @param cropWidth　深層学習に用いる画像の横幅
+     * @param cropHeight　深層学習に用いる画像の高さ
+     * @return
+     */
+    private float[] calDistanceOfPerPixel(int previewWidth, int previewHeight, int cropWidth, int cropHeight) {
+
+        float[] dis = new float[2];
+
+        DisplayMetrics metrics = new DisplayMetrics();
+        getWindowManager().getDefaultDisplay().getMetrics(metrics);
+
+        // 実際の解像度(pixel)
+        int realWidthPixels = metrics.widthPixels;
+        int realHeightPixels = metrics.heightPixels;
+
+        // 画面の大きさ(cm)
+        float realWidthCentiMeter = ((float) realWidthPixels / metrics.xdpi) * 2.54f;
+        float realHeightCentimeter = ((float) realHeightPixels / metrics.ydpi) * 2.54f;
+
+        // 1物理ピクセルごとの距離
+        float realWidthPerPixel = (1 / metrics.xdpi) * 2.54f;
+        float realHeightPerPixel = (1 / metrics.ydpi) * 2.54f;
+
+        this.realWidthPerPixel = realWidthPerPixel;
+        this.realHeightPercPixel = realHeightPerPixel;
+
+        float imageWidthPerPixel = ((float) previewWidth / (float) cropWidth) * realWidthPerPixel;
+        float imageHeightPerPixel = ((float) previewHeight / (float) cropHeight) * realHeightPerPixel;
+
+        dis[0] = imageWidthPerPixel;
+        dis[1] = imageHeightPerPixel;
+
+        Log.v("distance", previewHeight + ":" + realHeightCentimeter);
+
+
+        return dis;
+    }
+
+    // bitmap上の視線の位置
+    /**
+     *
+     * @param gaze 深層学習によって手に入ったカメラからの相対的な位置（座標系x右y上）
+     * @param dis 画像上での1pixelの実世界上での大きさ
+     * @return
+     */
+    private float[] gazePointOnBitmap(float[] gaze, float[] dis){
+
+        // MediaPad M5 Proを縦型カメラ右側に持ったときの画面左上から見たカメラの位置[cm]（画面座標系）
+        float dx = 15.2f;
+        float dy = 11.7f;
+
+        // 画面左上からgazeの位置（座標系の向き考慮）
+        float realx = dx + gaze[0];
+        float realy = dy - gaze[1];
+
+        int x = (int)(realx/dis[0]);
+        int y = (int)(realy/dis[1]);
+
+        return new float[]{x,y};
+
+    }
+
+    private float[] gazePointOnReal(float[] gaze){
+
+        // MediaPad M5 Proを縦型カメラ右側に持ったときの画面左上から見たカメラの位置[cm]（画面座標系）
+        float dx = 15.2f;
+        float dy = 11.7f;
+
+        // 画面左上からgazeの位置（座標系の向き考慮）
+        float realx = dx + gaze[0];
+        float realy = dy - gaze[1];
+
+        int x = (int)(realx/realWidthPerPixel);
+        int y = (int)(realy/realHeightPercPixel);
+
+        return new float[]{x,y};
+
     }
 
     private Rect calEyeRect(List<FirebaseVisionPoint> lists) {
@@ -419,20 +574,55 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
                         //final List<Classifier.Recognition> results = detector.recognizeImage(croppedBitmap);
                         final float[][] results = detector.recognizeImageEye(face, right, left, grid);
 
+                        // 視線推定の結果からcropのビットマップ上の位置を計算
+                        float[] result = gazePointOnReal(new float[]{results[0][0], results[0][1]});
+                        // float[] result = gazePointOnReal(new float[]{-1f, 0f});
+                        //float[] result = gazePointOnBitmap(new float[]{-5f, 0f}, dis);
+
                         Log.v("neko", "x:" + results[0][0] + "\n" + results[0][1]);
-                        computingDetection = false;
 
 
-            /*            lastProcessingTimeMs = SystemClock.uptimeMillis() - startTime;
+                        // 時間の測定
+                        lastProcessingTimeMs = SystemClock.uptimeMillis() - startTime;
 
                         cropCopyBitmap = Bitmap.createBitmap(croppedBitmap);
                         // 紐付け？
                         final Canvas canvas = new Canvas(cropCopyBitmap);
                         final Paint paint = new Paint();
                         paint.setColor(Color.RED);
-                        paint.setStyle(Style.STROKE);
+                        paint.setStyle(Paint.Style.STROKE);
                         paint.setStrokeWidth(2.0f);
 
+                        // cropToFrameTransform.mapPoints(result);
+
+                        tracker.setEyePosition(result);
+
+                        // 更新要請
+                        trackingOverlay.postInvalidate();
+
+/*                        runOnUiThread(
+                                new Runnable() {
+                                    @Override
+                                    public void run() {
+                                        showFrameInfo(previewWidth + "x" + previewHeight);
+                                        showCropInfo(cropCopyBitmap.getWidth() + "x" + cropCopyBitmap.getHeight());
+                                        showInference(lastProcessingTimeMs + "ms");
+                                    }
+                                });*/
+/*
+
+                        // 時間の測定
+                        lastProcessingTimeMs = SystemClock.uptimeMillis() - startTime;
+
+                        cropCopyBitmap = Bitmap.createBitmap(croppedBitmap);
+                        // 紐付け？
+                        final Canvas canvas = new Canvas(cropCopyBitmap);
+                        final Paint paint = new Paint();
+                        paint.setColor(Color.RED);
+                        paint.setStyle(Paint.Style.STROKE);
+                        paint.setStrokeWidth(2.0f);
+
+                        // 検知するサイズが小さい場合検知しない
                         float minimumConfidence = MINIMUM_CONFIDENCE_TF_OD_API;
                         switch (MODE) {
                             case TF_OD_API:
@@ -440,26 +630,31 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
                                 break;
                         }
 
+                        // 結果を保存するリストの作成
                         final List<Classifier.Recognition> mappedRecognitions =
                                 new LinkedList<Classifier.Recognition>();
 
+                        // 深層学習で得た結果をbitmapに貼り付けている
                         for (final Classifier.Recognition result : results) {
                             final RectF location = result.getLocation();
                             if (location != null && result.getConfidence() >= minimumConfidence) {
                                 canvas.drawRect(location, paint);
 
+                                // locatin(rect)をcropToFrameTransformのマトリックスで変形
                                 cropToFrameTransform.mapRect(location);
 
+                                // 変形させた結果を元に戻している
                                 result.setLocation(location);
+                                // listに格納
                                 mappedRecognitions.add(result);
                             }
                         }
 
-                        // 一時的にtimestampに100を代入
+                        // trackingのデータについて
                         tracker.trackResults(mappedRecognitions, 100);
-                        trackingOverlay.postInvalidate();
 
-                        computingDetection = false;
+                        // 更新要請
+                        trackingOverlay.postInvalidate();
 
                         runOnUiThread(
                                 new Runnable() {
@@ -469,7 +664,10 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
                                         showCropInfo(cropCopyBitmap.getWidth() + "x" + cropCopyBitmap.getHeight());
                                         showInference(lastProcessingTimeMs + "ms");
                                     }
-                                });*/
+                                });
+*/
+
+                        computingDetection = false;
                     }
                 });
     }

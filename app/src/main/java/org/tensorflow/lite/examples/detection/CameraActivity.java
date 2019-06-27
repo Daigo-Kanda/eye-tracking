@@ -17,6 +17,7 @@
 package org.tensorflow.lite.examples.detection;
 
 import android.Manifest;
+import android.app.ActionBar;
 import android.app.Fragment;
 import android.content.Context;
 import android.content.pm.PackageManager;
@@ -106,6 +107,11 @@ public abstract class CameraActivity extends AppCompatActivity
     } else {
       requestPermission();
     }
+
+    View decorView = getWindow().getDecorView();
+// Hide the status bar.
+    int uiOptions = View.SYSTEM_UI_FLAG_FULLSCREEN;
+    decorView.setSystemUiVisibility(uiOptions);
 
     threadsTextView = findViewById(R.id.threads);
     plusImageView = findViewById(R.id.plus);
