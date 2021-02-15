@@ -306,7 +306,7 @@ public class TFLiteObjectDetectionAPIModel implements Classifier {
     }
 
     @Override
-    public float[][] recognizeImageEye(Bitmap face, Bitmap right_eye, Bitmap left_eye, Bitmap face_grid) {
+    public float[][] recognizeImageEye(Bitmap face, Bitmap right_eye, Bitmap left_eye, float[] face_grid) {
 
         //Bitmap2Mat(face);
 
@@ -317,7 +317,7 @@ public class TFLiteObjectDetectionAPIModel implements Classifier {
         face.getPixels(intValues_face, 0, face.getWidth(), 0, 0, face.getWidth(), face.getHeight());
         right_eye.getPixels(intValues_right, 0, right_eye.getWidth(), 0, 0, right_eye.getWidth(), right_eye.getHeight());
         left_eye.getPixels(intValues_left, 0, left_eye.getWidth(), 0, 0, left_eye.getWidth(), left_eye.getHeight());
-        face_grid.getPixels(intValues_grid, 0, face_grid.getWidth(), 0, 0, face_grid.getWidth(), face_grid.getHeight());
+//        face_grid.getPixels(intValues_grid, 0, face_grid.getWidth(), 0, 0, face_grid.getWidth(), face_grid.getHeight());
 
         // マーク位置を0に戻す
         imgData_face.rewind();
@@ -390,19 +390,24 @@ public class TFLiteObjectDetectionAPIModel implements Classifier {
 
             }
         }
+//
+//        for (int i = 0; i < 25; ++i) {
+//            for (int j = 0; j < 25; ++j) {
+//                // 一つずつピクセルを取り出す
+//                int pixelValue = intValues_grid[i * 25 + j];
+//                if (pixelValue == -16777216) {
+//                    imgData_grid.putFloat(0.0f);
+//                }
+//                if (pixelValue == -1) {
+//                    imgData_grid.putFloat(1.0f);
+//                }
+//
+//            }
+//        }
 
-        for (int i = 0; i < 25; ++i) {
-            for (int j = 0; j < 25; ++j) {
-                // 一つずつピクセルを取り出す
-                int pixelValue = intValues_grid[i * 25 + j];
-                if (pixelValue == -16777216) {
-                    imgData_grid.putFloat(0.0f);
-                }
-                if (pixelValue == -1) {
-                    imgData_grid.putFloat(1.0f);
-                }
-
-            }
+        for (int i = 0; i < 625; ++i) {
+            // 一つずつピクセルを取り出す
+            imgData_grid.putFloat(face_grid[i]);
         }
 
         // inputArrayにimgDataのBufferを代入（object型）

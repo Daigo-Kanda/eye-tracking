@@ -22,7 +22,7 @@ import java.util.List;
 /** Generic interface for interacting with different recognition engines. */
 public interface Classifier {
   List<Recognition> recognizeImage(Bitmap bitmap);
-  float[][] recognizeImageEye(Bitmap face, Bitmap right_eye, Bitmap left_eye, Bitmap face_grid);
+  float[][] recognizeImageEye(Bitmap face, Bitmap right_eye, Bitmap left_eye, float[] face_grid);
 
   void enableStatLogging(final boolean debug);
 

@@ -16,15 +16,15 @@
 
 package org.tensorflow.lite.examples.detection;
 
+import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.Bitmap.Config;
+import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Matrix;
 import android.graphics.Paint;
-import android.graphics.Point;
 import android.graphics.Rect;
-import android.graphics.RectF;
 import android.graphics.Typeface;
 import android.media.ImageReader.OnImageAvailableListener;
 import android.os.Environment;
@@ -53,16 +53,20 @@ import org.tensorflow.lite.examples.detection.customview.OverlayView.DrawCallbac
 import org.tensorflow.lite.examples.detection.env.BorderedText;
 import org.tensorflow.lite.examples.detection.env.ImageUtils;
 import org.tensorflow.lite.examples.detection.env.Logger;
+import org.tensorflow.lite.examples.detection.npy2java.Npy;
 import org.tensorflow.lite.examples.detection.tflite.Classifier;
 import org.tensorflow.lite.examples.detection.tflite.TFLiteObjectDetectionAPIModel;
 import org.tensorflow.lite.examples.detection.tracking.MultiBoxTracker;
 
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Date;
-import java.util.LinkedList;
 import java.util.List;
 
 /**
@@ -73,7 +77,7 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
     private static final Logger LOGGER = new Logger();
 
     // Configuration values for the prepackaged SSD model.
-    private static final int TF_OD_API_INPUT_SIZE = 64;
+    private static final int TF_OD_API_INPUT_SIZE = 224;
     private static final int cropSizex = 960;
     private static final int cropSizey = 1280;
 
@@ -113,10 +117,12 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
      * 自分で定義したフィールド
      */
 
-    private int scaledSize = 64;
+    private int scaledSize = 224;
 
     // 画像上での1pixelあたりの長さ[cm]を格納
     private float[] dis = new float[2];
+
+    private WriteCSV writeCSV = new WriteCSV("gazeEsti_time", false);
 
     // 確認用
     private float realWidthPerPixel;
@@ -138,7 +144,7 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
 
         int width = findViewById(R.id.container).getWidth();
         int height = findViewById(R.id.container).getHeight();
-        dis = calDistanceOfPerPixel(width,height,cropSizex,cropSizey);
+        dis = calDistanceOfPerPixel(width, height, cropSizex, cropSizey);
 
         Log.v("Container", dis[0] + ":" + dis[1]);
         final float textSizePx =
@@ -174,7 +180,7 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
         previewWidth = size.getWidth();
         previewHeight = size.getHeight();
 
-        Log.v("previewsize", previewWidth +":"+ previewHeight);
+        Log.v("previewsize", previewWidth + ":" + previewHeight);
 
         sensorOrientation = rotation - getScreenOrientation();
         LOGGER.i("Camera orientation relative to screen canvas: %d", sensorOrientation);
@@ -228,7 +234,8 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
     @Override
     protected void processImage() {
 
-        saveImage(rgbFrameBitmap, "real");
+        // テスト用に画像を保存
+        // saveImage(rgbFrameBitmap, "real");
         ++timestamp;
         final long currTimestamp = timestamp;
         trackingOverlay.postInvalidate();
@@ -255,7 +262,8 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
         canvas.drawBitmap(rgbFrameBitmap, frameToCropTransform, null);
 
         Log.v("croppedBitmap", croppedBitmap.getWidth() + ":" + croppedBitmap.getHeight());
-        saveImage(croppedBitmap, "cropped");
+
+        //saveImage(croppedBitmap, "cropped");
 
         // croppedBitmapを保存
         if (SAVE_PREVIEW_BITMAP) {
@@ -267,10 +275,9 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
                     @Override
                     public void run() {
 
-                        Log.v("MLKit", "aaaaaaa");
-
                         LOGGER.i("Running detection on image " + currTimestamp);
-                        final long startTime = SystemClock.uptimeMillis();
+
+                        long startFace = SystemClock.uptimeMillis();
 
                         //顔検出のための処理
                         FirebaseVisionImage image = FirebaseVisionImage.fromBitmap(croppedBitmap);
@@ -353,17 +360,18 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
                                                                     }
                                                                 }
 
+                                                                long faceTime = SystemClock.uptimeMillis() - startFace;
 
-                                                                saveImage(grid, "grid");
+                                                                // saveImage(grid, "grid");
 
-                                                                saveImage(face, "face");
+                                                                // saveImage(face, "face");
 
-                                                                saveImage(right, "right");
+                                                                // saveImage(right, "right");
 
-                                                                saveImage(left, "left");
+                                                                // saveImage(left, "left");
 
                                                                 //computingDetection = false;
-                                                                recognize(face, right, left, grid);
+                                                                recognize(getBaseContext(), face, left, right, grid, faceTime);
                                                             }
 
                                                             // 顔の領域が画面の外に及ぶ場合
@@ -393,12 +401,12 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
     }
 
     // 画像上での1pixelの実際の距離を返す(cm)．
+
     /**
-     *
-     * @param previewWidth ディスプレイ上に描画している画像の横幅（物理ピクセル）
+     * @param previewWidth  ディスプレイ上に描画している画像の横幅（物理ピクセル）
      * @param previewHeight ディスプレイ上に描画している画像の高さ（物理ピクセル）
-     * @param cropWidth　深層学習に用いる画像の横幅
-     * @param cropHeight　深層学習に用いる画像の高さ
+     * @param cropWidth     　深層学習に用いる画像の横幅
+     * @param cropHeight    　深層学習に用いる画像の高さ
      * @return
      */
     private float[] calDistanceOfPerPixel(int previewWidth, int previewHeight, int cropWidth, int cropHeight) {
@@ -436,13 +444,13 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
     }
 
     // bitmap上の視線の位置
+
     /**
-     *
      * @param gaze 深層学習によって手に入ったカメラからの相対的な位置（座標系x右y上）
-     * @param dis 画像上での1pixelの実世界上での大きさ
+     * @param dis  画像上での1pixelの実世界上での大きさ
      * @return
      */
-    private float[] gazePointOnBitmap(float[] gaze, float[] dis){
+    private float[] gazePointOnBitmap(float[] gaze, float[] dis) {
 
         // MediaPad M5 Proを縦型カメラ右側に持ったときの画面左上から見たカメラの位置[cm]（画面座標系）
         float dx = 15.2f;
@@ -452,14 +460,14 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
         float realx = dx + gaze[0];
         float realy = dy - gaze[1];
 
-        int x = (int)(realx/dis[0]);
-        int y = (int)(realy/dis[1]);
+        int x = (int) (realx / dis[0]);
+        int y = (int) (realy / dis[1]);
 
-        return new float[]{x,y};
+        return new float[]{x, y};
 
     }
 
-    private float[] gazePointOnReal(float[] gaze){
+    private float[] gazePointOnReal(float[] gaze) {
 
         // MediaPad M5 Proを縦型カメラ右側に持ったときの画面左上から見たカメラの位置[cm]（画面座標系）
         float dx = 15.2f;
@@ -469,10 +477,10 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
         float realx = dx + gaze[0];
         float realy = dy - gaze[1];
 
-        int x = (int)(realx/realWidthPerPixel);
-        int y = (int)(realy/realHeightPercPixel);
+        int x = (int) (realx / realWidthPerPixel);
+        int y = (int) (realy / realHeightPercPixel);
 
-        return new float[]{x,y};
+        return new float[]{x, y};
 
     }
 
@@ -560,7 +568,7 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
         return ret;
     }
 
-    private void recognize(Bitmap face, Bitmap right, Bitmap left, Bitmap grid) {
+    private void recognize(Context context, Bitmap face, Bitmap right, Bitmap left, Bitmap grid, long faceTime) {
 
         runInBackground(
                 new Runnable() {
@@ -568,11 +576,64 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
                     public void run() {
                         Log.v("MLKit", "recognize");
 
+                        long startCNN = SystemClock.uptimeMillis();
+
                         //LOGGER.i("Running detection on image " + currTimestamp);
                         final long startTime = SystemClock.uptimeMillis();
 
+                        BitmapFactory.Options options = new BitmapFactory.Options();
+                        options.inSampleSize = 2;
+
+                        Bitmap face_b = null;
+                        Bitmap right_b = null;
+                        Bitmap left_b = null;
+
+                        try{
+                            face_b = BitmapFactory.decodeStream(getResources().getAssets().open("00757_face.jpg"));
+                            right_b = BitmapFactory.decodeStream(getResources().getAssets().open("00757_right.jpg"));
+                            left_b = BitmapFactory.decodeStream(getResources().getAssets().open("00757_left.jpg"));
+                        }catch (IOException e){
+
+
+                        }
+
+                        face_b = Bitmap.createScaledBitmap(face_b, scaledSize, scaledSize, true);
+                        right_b = Bitmap.createScaledBitmap(right_b, scaledSize, scaledSize, true);
+                        left_b = Bitmap.createScaledBitmap(left_b, scaledSize, scaledSize, true);
+
+
+                        InputStream stream = null;
+                        try {
+                            stream = context.getAssets().open("grid.txt");
+                        } catch (IOException e) {
+                            e.printStackTrace();
+                        }
+                        BufferedReader reader = new BufferedReader(new InputStreamReader(stream));
+
+                        float[] check = new float[625];
+                        int count = 0;
+
+                        try {
+                            String csvLine;
+                            while ((csvLine = reader.readLine()) != null) {
+                                check[count] = Float.parseFloat(csvLine.split(",")[0]);
+                                count++;
+                            }
+                        }
+                        catch (IOException ex) {
+                            throw new RuntimeException("Error in reading CSV file: "+ex);
+                        }
+                        finally {
+                            try {
+                                stream.close();
+                            }
+                            catch (IOException e) {
+                                throw new RuntimeException("Error while closing input stream: "+e);
+                            }
+                        }
+
                         //final List<Classifier.Recognition> results = detector.recognizeImage(croppedBitmap);
-                        final float[][] results = detector.recognizeImageEye(face, right, left, grid);
+                        final float[][] results = detector.recognizeImageEye(face_b, right_b, left_b, check);
 
                         // 視線推定の結果からcropのビットマップ上の位置を計算
                         float[] result = gazePointOnReal(new float[]{results[0][0], results[0][1]});
@@ -583,15 +644,18 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
 
 
                         // 時間の測定
-                        lastProcessingTimeMs = SystemClock.uptimeMillis() - startTime;
+                        long endCNN = SystemClock.uptimeMillis();
 
-                        cropCopyBitmap = Bitmap.createBitmap(croppedBitmap);
+                        if (result != null) {
+                            writeCSV.MakeFile(faceTime + "," + String.valueOf(endCNN - startCNN));
+                        }
+                        // cropCopyBitmap = Bitmap.createBitmap(croppedBitmap);
                         // 紐付け？
-                        final Canvas canvas = new Canvas(cropCopyBitmap);
-                        final Paint paint = new Paint();
-                        paint.setColor(Color.RED);
-                        paint.setStyle(Paint.Style.STROKE);
-                        paint.setStrokeWidth(2.0f);
+                        // final Canvas canvas = new Canvas(cropCopyBitmap);
+//                        final Paint paint = new Paint();
+//                        paint.setColor(Color.RED);
+//                        paint.setStyle(Paint.Style.STROKE);
+//                        paint.setStrokeWidth(2.0f);
 
                         // cropToFrameTransform.mapPoints(result);
 
