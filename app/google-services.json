@@ -1,0 +1,40 @@
+{
+  "project_info": {
+    "project_number": "437161613719",
+    "firebase_url": "https://eyetracking-d0670.firebaseio.com",
+    "project_id": "eyetracking-d0670",
+    "storage_bucket": "eyetracking-d0670.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:437161613719:android:8fc7994da9e9da11",
+        "android_client_info": {
+          "package_name": "org.tensorflow.lite.examples.detection"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "437161613719-a63s0dgpi9mfdea26e4f06rjien1eoks.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCJ1Ftv0O3hsKnhhfjRCHN4mDYOvWBCnkw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "437161613719-a63s0dgpi9mfdea26e4f06rjien1eoks.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

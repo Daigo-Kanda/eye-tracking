@@ -17,11 +17,15 @@ package org.tensorflow.lite.examples.detection.tflite;
 
 import android.graphics.Bitmap;
 import android.graphics.RectF;
+
+import org.jetbrains.bio.npy.NpyArray;
+
 import java.util.List;
 
 /** Generic interface for interacting with different recognition engines. */
 public interface Classifier {
   List<Recognition> recognizeImage(Bitmap bitmap);
+  float[][] recognizeImageEye(Bitmap face, Bitmap right_eye, Bitmap left_eye, float[] face_grid, NpyArray face_mean, NpyArray right_mean, NpyArray left_mean);
 
   void enableStatLogging(final boolean debug);
 
