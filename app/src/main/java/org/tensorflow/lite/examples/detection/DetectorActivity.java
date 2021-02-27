@@ -48,12 +48,13 @@ import com.google.firebase.ml.vision.face.FirebaseVisionFaceContour;
 import com.google.firebase.ml.vision.face.FirebaseVisionFaceDetector;
 import com.google.firebase.ml.vision.face.FirebaseVisionFaceDetectorOptions;
 
+import org.jetbrains.bio.npy.NpyArray;
+import org.jetbrains.bio.npy.NpyFile;
 import org.tensorflow.lite.examples.detection.customview.OverlayView;
 import org.tensorflow.lite.examples.detection.customview.OverlayView.DrawCallback;
 import org.tensorflow.lite.examples.detection.env.BorderedText;
 import org.tensorflow.lite.examples.detection.env.ImageUtils;
 import org.tensorflow.lite.examples.detection.env.Logger;
-import org.tensorflow.lite.examples.detection.npy2java.Npy;
 import org.tensorflow.lite.examples.detection.tflite.Classifier;
 import org.tensorflow.lite.examples.detection.tflite.TFLiteObjectDetectionAPIModel;
 import org.tensorflow.lite.examples.detection.tracking.MultiBoxTracker;
@@ -64,6 +65,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.nio.file.Paths;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
@@ -588,11 +590,22 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
                         Bitmap right_b = null;
                         Bitmap left_b = null;
 
-                        try{
+                        MyApplication ma = (MyApplication)context.getApplicationContext();
+                        ma.loadNPY();
+                        NpyArray face_mean = ma.face_mean;
+                        NpyArray right_mean = ma.right_mean;
+                        NpyArray left_mean = ma.left_mean;
+
+                        float test = face_mean.asFloatArray()[224];
+
+//                        NpyArray test = NpyFile.read(Paths.get(URI.parse("file:///android_asset/face_mean.npy")), 1000);
+
+
+                        try {
                             face_b = BitmapFactory.decodeStream(getResources().getAssets().open("00757_face.jpg"));
                             right_b = BitmapFactory.decodeStream(getResources().getAssets().open("00757_right.jpg"));
                             left_b = BitmapFactory.decodeStream(getResources().getAssets().open("00757_left.jpg"));
-                        }catch (IOException e){
+                        } catch (IOException e) {
 
 
                         }
@@ -619,21 +632,18 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
                                 check[count] = Float.parseFloat(csvLine.split(",")[0]);
                                 count++;
                             }
-                        }
-                        catch (IOException ex) {
-                            throw new RuntimeException("Error in reading CSV file: "+ex);
-                        }
-                        finally {
+                        } catch (IOException ex) {
+                            throw new RuntimeException("Error in reading CSV file: " + ex);
+                        } finally {
                             try {
                                 stream.close();
-                            }
-                            catch (IOException e) {
-                                throw new RuntimeException("Error while closing input stream: "+e);
+                            } catch (IOException e) {
+                                throw new RuntimeException("Error while closing input stream: " + e);
                             }
                         }
 
                         //final List<Classifier.Recognition> results = detector.recognizeImage(croppedBitmap);
-                        final float[][] results = detector.recognizeImageEye(face_b, right_b, left_b, check);
+                        final float[][] results = detector.recognizeImageEye(face_b, right_b, left_b, check, face_mean, right_mean, left_mean);
 
                         // 視線推定の結果からcropのビットマップ上の位置を計算
                         float[] result = gazePointOnReal(new float[]{results[0][0], results[0][1]});

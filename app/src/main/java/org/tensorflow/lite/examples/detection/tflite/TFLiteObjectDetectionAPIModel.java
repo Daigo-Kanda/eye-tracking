@@ -21,6 +21,7 @@ import android.graphics.Bitmap;
 import android.graphics.RectF;
 import android.os.Trace;
 
+import org.jetbrains.bio.npy.NpyArray;
 import org.tensorflow.lite.Interpreter;
 import org.tensorflow.lite.examples.detection.env.Logger;
 
@@ -306,7 +307,7 @@ public class TFLiteObjectDetectionAPIModel implements Classifier {
     }
 
     @Override
-    public float[][] recognizeImageEye(Bitmap face, Bitmap right_eye, Bitmap left_eye, float[] face_grid) {
+    public float[][] recognizeImageEye(Bitmap face, Bitmap right_eye, Bitmap left_eye, float[] face_grid, NpyArray face_mean, NpyArray rigth_mean, NpyArray left_mean) {
 
         //Bitmap2Mat(face);
 
@@ -325,8 +326,58 @@ public class TFLiteObjectDetectionAPIModel implements Classifier {
         imgData_left.rewind();
         imgData_grid.rewind();
 
+        for (int i = 0; i < inputSize; ++i) {
+            for (int j = 0; j < inputSize; ++j) {
+                // 一つずつピクセルを取り出す
+                int pixelValue = intValues_face[i * inputSize + j];
 
-        int count = 0;
+                float b = ((pixelValue & 0xFF) / IMAGE_MAX);
+                float g = (((pixelValue >> 8) & 0xFF) / IMAGE_MAX);
+                float r = (((pixelValue >> 16) & 0xFF) / IMAGE_MAX);
+
+                float mean_r = (face_mean.asFloatArray()[i * inputSize + j + 0] / IMAGE_MAX);
+                float mean_g = (face_mean.asFloatArray()[i * inputSize + j + 1] / IMAGE_MAX);
+                float mean_b = (face_mean.asFloatArray()[i * inputSize + j + 2] / IMAGE_MAX);
+
+                // 画像をfloat型に変換
+                imgData_face.putFloat(((pixelValue & 0xFF) / IMAGE_MAX) - (face_mean.asFloatArray()[i * inputSize + j + 2] / IMAGE_MAX));
+                imgData_face.putFloat((((pixelValue >> 8) & 0xFF) / IMAGE_MAX) - (face_mean.asFloatArray()[i * inputSize + j + 1] / IMAGE_MAX));
+                imgData_face.putFloat((((pixelValue >> 16) & 0xFF) / IMAGE_MAX) - (face_mean.asFloatArray()[i * inputSize + j + 0] / IMAGE_MAX));
+
+            }
+        }
+
+        for (int i = 0; i < inputSize; ++i) {
+            for (int j = 0; j < inputSize; ++j) {
+                // 一つずつピクセルを取り出す
+                int pixelValue = intValues_right[i * inputSize + j];
+
+                // 画像をfloat型に変換
+                imgData_right.putFloat(((pixelValue & 0xFF) / IMAGE_MAX) - (rigth_mean.asFloatArray()[i * inputSize + j + 2] / IMAGE_MAX));
+                imgData_right.putFloat((((pixelValue >> 8) & 0xFF) / IMAGE_MAX) - (rigth_mean.asFloatArray()[i * inputSize + j + 1] / IMAGE_MAX));
+                imgData_right.putFloat((((pixelValue >> 16) & 0xFF) / IMAGE_MAX) - (rigth_mean.asFloatArray()[i * inputSize + j + 0] / IMAGE_MAX));
+
+            }
+        }
+
+        for (int i = 0; i < inputSize; ++i) {
+            for (int j = 0; j < inputSize; ++j) {
+                // 一つずつピクセルを取り出す
+                int pixelValue = intValues_left[i * inputSize + j];
+
+                // 画像をfloat型に変換
+                imgData_left.putFloat(((pixelValue & 0xFF) / IMAGE_MAX) - (left_mean.asFloatArray()[i * inputSize + j + 2] / IMAGE_MAX));
+                imgData_left.putFloat((((pixelValue >> 8) & 0xFF) / IMAGE_MAX) - (left_mean.asFloatArray()[i * inputSize + j + 1] / IMAGE_MAX));
+                imgData_left.putFloat((((pixelValue >> 16) & 0xFF) / IMAGE_MAX) - (left_mean.asFloatArray()[i * inputSize + j + 0] / IMAGE_MAX));
+
+            }
+        }
+
+
+
+
+        //　昔の手法の前処理
+/*        int count = 0;
         float face_mean = 0, right_mean = 0, left_mean = 0;
         // 画像の平均．画像を全て255で割ったあと，平均を求める
         // すごい重い作業なのであとで改善する必要がある
@@ -389,21 +440,23 @@ public class TFLiteObjectDetectionAPIModel implements Classifier {
                 imgData_left.putFloat((((pixelValue >> 16) & 0xFF) / IMAGE_MAX) - left_mean);
 
             }
-        }
-//
-//        for (int i = 0; i < 25; ++i) {
-//            for (int j = 0; j < 25; ++j) {
-//                // 一つずつピクセルを取り出す
-//                int pixelValue = intValues_grid[i * 25 + j];
-//                if (pixelValue == -16777216) {
-//                    imgData_grid.putFloat(0.0f);
-//                }
-//                if (pixelValue == -1) {
-//                    imgData_grid.putFloat(1.0f);
-//                }
-//
-//            }
-//        }
+        }*/
+
+
+// Bitmapからgridの作成
+/*        for (int i = 0; i < 25; ++i) {
+            for (int j = 0; j < 25; ++j) {
+                // 一つずつピクセルを取り出す
+                int pixelValue = intValues_grid[i * 25 + j];
+                if (pixelValue == -16777216) {
+                    imgData_grid.putFloat(0.0f);
+                }
+                if (pixelValue == -1) {
+                    imgData_grid.putFloat(1.0f);
+                }
+
+            }
+        }*/
 
         for (int i = 0; i < 625; ++i) {
             // 一つずつピクセルを取り出す
