@@ -117,6 +117,7 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
 
     /**
      * 自分で定義したフィールド
+     * あああ
      */
 
     private int scaledSize = 224;
